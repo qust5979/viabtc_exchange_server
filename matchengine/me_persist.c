@@ -60,9 +60,10 @@ static int get_last_slice(MYSQL *conn, time_t *timestamp, uint64_t *last_oper_id
 static int load_slice_from_db(MYSQL *conn, time_t timestamp)
 {
     sds table = sdsempty();
-
+    // 1. 依据时间生成slice_order 表
     table = sdscatprintf(table, "slice_order_%ld", timestamp);
     log_stderr("load orders from: %s", table);
+    // 1.1 加载订单（order by id limit 1000 买卖的订单,user, sell/buy）dict: <market, order>
     int ret = load_orders(conn, table);
     if (ret < 0) {
         log_error("load_orders from %s fail: %d", table, ret);
@@ -70,10 +71,11 @@ static int load_slice_from_db(MYSQL *conn, time_t timestamp)
         sdsfree(table);
         return -__LINE__;
     }
-
+    // 2. 依据时间生成slice_balance_ 表
     sdsclear(table);
     table = sdscatprintf(table, "slice_balance_%ld", timestamp);
     log_stderr("load balance from: %s", table);
+    // 2.1 加载用户的资产(order by id limit 1000)  dict:<balance_key, amount>
     ret = load_balance(conn, table);
     if (ret < 0) {
         log_error("load_balance from %s fail: %d", table, ret);
@@ -90,6 +92,7 @@ static int load_operlog_from_db(MYSQL *conn, time_t date, uint64_t *start_id)
 {
     struct tm *t = localtime(&date);
     sds table = sdsempty();
+    // 1. 依据date，生成操作日志表
     table = sdscatprintf(table, "operlog_%04d%02d%02d", 1900 + t->tm_year, 1 + t->tm_mon, t->tm_mday);
     log_stderr("load oper log from: %s", table);
     if (!is_table_exists(conn, table)) {
@@ -98,7 +101,7 @@ static int load_operlog_from_db(MYSQL *conn, time_t date, uint64_t *start_id)
         sdsfree(table);
         return 0;
     }
-
+    // 2. 从oper log 表中，读出大于start_id 的oper log
     int ret = load_operlog(conn, table, start_id);
     if (ret < 0) {
         log_error("load_operlog from %s fail: %d", table, ret);
@@ -124,6 +127,7 @@ int init_from_db(void)
     uint64_t last_oper_id  = 0;
     uint64_t last_order_id = 0;
     uint64_t last_deals_id = 0;
+    // 获取最后一个切片信息: slice_history,  order by id desc limit 1
     int ret = get_last_slice(conn, &last_slice_time, &last_oper_id, &last_order_id, &last_deals_id);
     if (ret < 0) {
         return ret;
@@ -138,18 +142,22 @@ int init_from_db(void)
     deals_id_start = last_deals_id;
 
     if (last_slice_time == 0) {
+        // 加载oper_log
         ret = load_operlog_from_db(conn, now, &last_oper_id);
         if (ret < 0)
             goto cleanup;
     } else {
+        // 加载order, balance
         ret = load_slice_from_db(conn, last_slice_time);
         if (ret < 0) {
             goto cleanup;
         }
 
         time_t begin = last_slice_time;
+        // 结束时间是明天的这个时间
         time_t end = get_today_start() + 86400;
         while (begin < end) {
+            // 一天一天加载:oper_log
             ret = load_operlog_from_db(conn, begin, &last_oper_id);
             if (ret < 0) {
                 goto cleanup;

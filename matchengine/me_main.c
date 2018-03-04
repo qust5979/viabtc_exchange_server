@@ -29,13 +29,16 @@ static void on_cron_check(nw_timer *timer, void *data)
     }
 }
 
+// 初始化进程资源
 static int init_process(void)
 {
+    // 如果配置了参数，设置打开文件的数量
     if (settings.process.file_limit) {
         if (set_file_limit(settings.process.file_limit) < 0) {
             return -__LINE__;
         }
     }
+    // 设置core文件的最大尺寸
     if (settings.process.core_limit) {
         if (set_core_limit(settings.process.core_limit) < 0) {
             return -__LINE__;
@@ -45,6 +48,7 @@ static int init_process(void)
     return 0;
 }
 
+// 初始化log
 static int init_log(void)
 {
     default_dlog = dlog_init(settings.log.path, settings.log.shift, settings.log.max, settings.log.num, settings.log.keep);
@@ -71,38 +75,42 @@ int main(int argc, char *argv[])
     }
 
     int ret;
-    ret = init_mpd();
+    ret = init_mpd();   // 1. 初始化浮点数运算, 用于金额计算. 相当于MulticurrencyMoney
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init mpd fail: %d", ret);
     }
-    ret = init_config(argv[1]);
+    ret = init_config(argv[1]);     // 2.初始化配置： 输入是个json文件的路径，载json配置
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "load config fail: %d", ret);
     }
-    ret = init_process();
+    ret = init_process();           // 3. 初始化进程资源
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init process fail: %d", ret);
     }
-    ret = init_log();
+    ret = init_log();               // 4. 初始化log库
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init log fail: %d", ret);
     }
-    ret = init_balance();
+    ret = init_balance();           // 5. 初始化余额: me_balance.c, 初始化以asset.name为key， asset_type 为value的资产
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init balance fail: %d", ret);
     }
-    ret = init_update();
+    ret = init_update();            // 6. TODO: 初始化一个字典
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init update fail: %d", ret);
     }
-    ret = init_trade();
+    ret = init_trade();             // 7. 初始化交易: me_trade.c 字典<market.name, market实体>, 数据来源json
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init trade fail: %d", ret);
     }
 
-    daemon(1, 1);
-    process_keepalive();
-
+    daemon(1, 1);                   // 8. 将本进程变为守护进程
+    process_keepalive();            // 9. 创建子进程，父子进程初始化信号处理
+    /**
+    *10. 从DB初始化，从slice_history, 获取最后一个切片： select ... from slice_history order by 'id' desc limit 1
+    *  依据slice 信息，加载order，balance、oper_log等信息
+    *
+    */
     ret = init_from_db();
     if (ret < 0) {
         error(EXIT_FAILURE, errno, "init from db fail: %d", ret);

@@ -114,7 +114,7 @@ int init_operlog(void)
         return -__LINE__;
     if (mysql_options(mysql_conn, MYSQL_SET_CHARSET_NAME, settings.db_log.charset) != 0)
         return -__LINE__;
-
+    // 创建线程池对象: 加载
     nw_job_type type;
     memset(&type, 0, sizeof(type));
     type.on_init    = on_job_init;
@@ -132,7 +132,8 @@ int init_operlog(void)
     list = list_create(&lt);
     if (list == NULL)
         return -__LINE__;
-
+    
+    // 定时flush log
     nw_timer_set(&timer, 0.1, true, on_timer, NULL);
     nw_timer_start(&timer);
 

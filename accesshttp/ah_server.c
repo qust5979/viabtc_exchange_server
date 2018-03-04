@@ -248,6 +248,7 @@ static int init_listener_clt(void)
     return 0;
 }
 
+// 增加处理句柄
 static int add_handler(char *method, rpc_clt *clt, uint32_t cmd)
 {
     struct request_info info = { .clt = clt, .cmd = cmd };
@@ -256,6 +257,10 @@ static int add_handler(char *method, rpc_clt *clt, uint32_t cmd)
     return 0;
 }
 
+/**
+* 注册关联API 与 对应服务
+*
+*/
 static int init_methods_handler(void)
 {
     ERR_RET_LN(add_handler("asset.list", matchengine, CMD_ASSET_LIST));
